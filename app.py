@@ -1,11 +1,10 @@
 import os
 import io
 import re
-import json
 import requests
 import tempfile
-from flask import Flask, request, jsonify, send_file, render_template, session
-from pydub import AudioSegment
+import subprocess
+from flask import Flask, request, jsonify, send_file, render_template
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import openpyxl.utils
@@ -13,14 +12,24 @@ import openpyxl.utils
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-in-prod")
 
-# ── Audio conversion ───────────────────────────────────────────────────────────
+# ── Audio conversion (ffmpeg directly, no pydub) ──────────────────────────────
 def webm_to_wav(webm_bytes):
-    audio = AudioSegment.from_file(io.BytesIO(webm_bytes), format="webm")
-    audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
-    buf = io.BytesIO()
-    audio.export(buf, format="wav")
-    buf.seek(0)
-    return buf.read()
+    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as inp:
+        inp.write(webm_bytes)
+        inp_path = inp.name
+    out_path = inp_path.replace(".webm", ".wav")
+    try:
+        subprocess.run([
+            "ffmpeg", "-y", "-i", inp_path,
+            "-ac", "1", "-ar", "16000", "-sample_fmt", "s16",
+            out_path
+        ], check=True, capture_output=True)
+        with open(out_path, "rb") as f:
+            return f.read()
+    finally:
+        os.unlink(inp_path)
+        if os.path.exists(out_path):
+            os.unlink(out_path)
 
 # ── Field parser ───────────────────────────────────────────────────────────────
 def parse_fields(text):
@@ -147,8 +156,10 @@ def export():
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    return send_file(buf, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                     as_attachment=True, download_name="tickets.xlsx")
+    return send_file(buf,
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     as_attachment=True,
+                     download_name="tickets.xlsx")
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
