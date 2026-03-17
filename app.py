@@ -97,7 +97,7 @@ def transcribe():
             "https://api.sarvam.ai/speech-to-text",
             headers={"api-subscription-key": api_key},
             files={"file": ("audio.wav", io.BytesIO(wav_bytes), "audio/wav")},
-            data={"model": "saarika:v2", "language_code": "en-IN"},
+            data={"model": "saarika:v2.5", "language_code": "en-IN"},
         )
 
         if not resp.ok:
