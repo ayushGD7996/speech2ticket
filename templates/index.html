@@ -246,7 +246,8 @@
         </button>
         <div class="rec-timer" id="recTimer">0:00</div>
         <div class="rec-hint">
-          press <kbd>R</kbd> to start &nbsp;·&nbsp; <kbd>S</kbd> to stop
+          press <kbd>R</kbd> to start &nbsp;·&nbsp; <kbd>S</kbd> to stop<br/>
+          <span style="margin-top:6px;display:block;color:var(--text2)">say: name · number · name · number</span>
         </div>
       </div>
 
@@ -320,7 +321,7 @@
 </div>
 
 <script>
-let entries = [];
+let entries = JSON.parse(localStorage.getItem("ticket_entries") || "[]");
 let mediaRecorder = null;
 let audioChunks = [];
 let isRecording = false;
@@ -332,6 +333,12 @@ let apiKey = localStorage.getItem("sarvam_key") || "";
 if (apiKey) {
   document.getElementById("apiKey").value = apiKey;
   setApiStatus(true);
+}
+
+// restore entries from localStorage
+if (entries.length) {
+  renderTable();
+  document.getElementById("exportBtn").disabled = false;
 }
 
 function saveKey() {
@@ -469,6 +476,7 @@ function deleteRow(i) {
 }
 
 function renderTable() {
+  localStorage.setItem("ticket_entries", JSON.stringify(entries));
   const tbody = document.getElementById("tableBody");
   const empty = document.getElementById("emptyState");
   const table = document.getElementById("dataTable");
@@ -506,6 +514,11 @@ async function exportExcel() {
   const a = document.createElement("a");
   a.href = url; a.download = "tickets.xlsx"; a.click();
   URL.revokeObjectURL(url);
+  localStorage.removeItem("ticket_entries");
+  entries = [];
+  renderTable();
+  document.getElementById("exportBtn").disabled = true;
+  setStatus("exported & cleared", "ok");
 }
 
 function setStatus(msg, cls) {
