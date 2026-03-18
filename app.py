@@ -32,45 +32,57 @@ def webm_to_wav(webm_bytes):
             os.unlink(out_path)
 
 # ── Field parser ───────────────────────────────────────────────────────────────
+# Format: "<referee name> <referee mobile> <referred name> <their mobile>"
+# No keywords needed — just 4 values in order.
+# A token is a "number" if it contains 3+ consecutive digits.
 def parse_fields(text):
-    t = text.lower()
-    tw = t.split()
-    words = text.split()
-
-    patterns = [
-        (["referred by", "refer by", "referral", "referred"], "referred"),
-        (["their mobile", "their number", "referrer mobile", "referrer number", "their mob"], "their_mobile"),
-        (["referee mobile", "referee number", "referee mob", "refree mobile"], "ref_mobile"),
-        (["referee", "refree", "referee name"], "referee"),
-        (["mobile", "number"], "ref_mobile"),
-    ]
-
-    def find_kw(kws):
-        for kw in sorted(kws, key=lambda x: -len(x.split())):
-            kw_words = kw.split()
-            n = len(kw_words)
-            for i in range(len(tw) - n + 1):
-                if tw[i:i+n] == kw_words:
-                    return i, n
-        return -1, 0
-
-    anchors = {}
-    for kws, field in patterns:
-        if field not in anchors:
-            idx, klen = find_kw(kws)
-            if idx >= 0:
-                anchors[field] = (idx, klen)
-
-    sorted_anchors = sorted(anchors.items(), key=lambda x: x[1][0])
+    words = text.strip().split()
     result = {"referee": "", "ref_mobile": "", "referred": "", "their_mobile": ""}
 
-    for i, (field, (idx, klen)) in enumerate(sorted_anchors):
-        next_idx = sorted_anchors[i+1][1][0] if i+1 < len(sorted_anchors) else len(words)
-        value_words = words[idx + klen: next_idx]
-        value = " ".join(value_words).strip(",;.: ")
-        if field in ("ref_mobile", "their_mobile"):
-            value = re.sub(r"[^0-9+]", "", value.replace(" ", ""))
-        result[field] = value
+    def is_number(token):
+        return bool(re.search(r'\d{3,}', token))
+
+    def clean_number(tokens):
+        return re.sub(r"[^0-9+]", "", "".join(tokens))
+
+    def clean_name(tokens):
+        return " ".join(tokens).strip(",;.: ")
+
+    # Walk through words collecting:
+    #   name_words → until we hit a number token
+    #   number_tokens → consecutive number-ish tokens
+    # Then repeat for second name + second number
+    segments = []   # list of (name_words, number_tokens)
+    name_buf = []
+    num_buf = []
+    in_number = False
+
+    for w in words:
+        if is_number(w):
+            in_number = True
+            num_buf.append(w)
+        else:
+            if in_number:
+                # number just ended — flush name+number pair
+                segments.append((list(name_buf), list(num_buf)))
+                name_buf.clear()
+                num_buf.clear()
+                in_number = False
+            name_buf.append(w)
+
+    # flush last number if transcript ends on digits
+    if num_buf:
+        segments.append((list(name_buf), list(num_buf)))
+    elif name_buf:
+        # trailing name with no number — treat as name only
+        segments.append((list(name_buf), []))
+
+    if len(segments) >= 1:
+        result["referee"]    = clean_name(segments[0][0])
+        result["ref_mobile"] = clean_number(segments[0][1])
+    if len(segments) >= 2:
+        result["referred"]    = clean_name(segments[1][0])
+        result["their_mobile"] = clean_number(segments[1][1])
 
     return result
 
